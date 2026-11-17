@@ -2,7 +2,7 @@
 extends Node3D
 
 # TRAFFIC CITY 3D
-# Version 0.4 - Green City
+# Version 0.5 - Real Cars
 # Godot 4.3 / Android
 
 var cars: Array[Node3D] = []
@@ -44,7 +44,7 @@ func create_debug_indicator() -> void:
 
 	var panel := PanelContainer.new()
 	panel.position = Vector2(15, 15)
-	panel.custom_minimum_size = Vector2(360, 52)
+	panel.custom_minimum_size = Vector2(390, 52)
 	layer.add_child(panel)
 
 	var style := StyleBoxFlat.new()
@@ -57,9 +57,7 @@ func create_debug_indicator() -> void:
 
 	debug_label = Label.new()
 	debug_label.text = "TRAFFIC CITY 3D - Loading..."
-	debug_label.add_theme_font_size_override(
-		"font_size", 19
-	)
+	debug_label.add_theme_font_size_override("font_size", 19)
 	debug_label.add_theme_color_override(
 		"font_color",
 		Color(0.50, 1.0, 0.65)
@@ -93,13 +91,13 @@ func start_city() -> void:
 	update_status("Creating street lights...")
 	create_street_lights()
 
-	update_status("Creating cars...")
+	update_status("Creating detailed cars...")
 	create_cars()
 
 	city_ready = true
 
 	update_status(
-		"Green City ready | Cars: "
+		"Real Cars ready | Cars: "
 		+ str(cars.size())
 		+ " | Objects: "
 		+ str(created_objects)
@@ -113,7 +111,6 @@ func make_box(
 	parent: Node3D = null
 ) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
-
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	node.mesh = mesh
@@ -121,8 +118,8 @@ func make_box(
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.roughness = 0.75
-	node.material_override = material
 
+	node.material_override = material
 	node.position = pos
 
 	if parent == null:
@@ -142,7 +139,6 @@ func make_cylinder(
 	parent: Node3D = null
 ) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
-
 	var mesh := CylinderMesh.new()
 	mesh.top_radius = radius
 	mesh.bottom_radius = radius
@@ -173,7 +169,6 @@ func make_sphere(
 	parent: Node3D = null
 ) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
-
 	var mesh := SphereMesh.new()
 	mesh.radius = radius
 	mesh.height = radius * 2.0
@@ -254,7 +249,7 @@ func create_roads() -> void:
 		for x in range(-52, 53, 8):
 			make_box(
 				Vector3(float(x), 0.13, z),
-				Vector3(3, 0.02, 0.18),
+				Vector3(3.0, 0.02, 0.18),
 				marking
 			)
 
@@ -262,10 +257,7 @@ func create_roads() -> void:
 func create_buildings() -> void:
 	for x in [-45.0, -15.0, 15.0, 45.0]:
 		for z in [-45.0, -15.0, 15.0, 45.0]:
-			var height := rng.randf_range(
-				8.0, 21.0
-			)
-
+			var height := rng.randf_range(8.0, 21.0)
 			var color_index := rng.randi_range(
 				0,
 				building_colors.size() - 1
@@ -331,13 +323,8 @@ func create_building(
 			continue
 
 		for column in range(3):
-			var window_x := (
-				-3.0 + float(column) * 3.0
-			)
-
-			var glass := Color(
-				0.20, 0.37, 0.49
-			)
+			var window_x := -3.0 + float(column) * 3.0
+			var glass := Color(0.20, 0.37, 0.49)
 
 			make_box(
 				Vector3(window_x, y, 5.06),
@@ -355,9 +342,7 @@ func create_building(
 
 
 func create_bridge() -> void:
-	var bridge_road := Color(
-		0.18, 0.19, 0.22
-	)
+	var bridge_road := Color(0.18, 0.19, 0.22)
 
 	make_box(
 		Vector3(0, 5, -15),
@@ -382,16 +367,12 @@ func create_bridge() -> void:
 
 
 func create_green_areas() -> void:
-	# 16 trees, placed near building corners.
-	# Avoid roads and sidewalks.
-
 	for x in [-45.0, -15.0, 15.0, 45.0]:
 		for z in [-45.0, -15.0, 15.0, 45.0]:
 			create_tree(
 				Vector3(x + 9.0, 0, z + 9.0)
 			)
 
-	# Four small flower beds in the outer corners.
 	for x in [-54.0, 54.0]:
 		for z in [-54.0, 54.0]:
 			create_flower_bed(Vector3(x, 0, z))
@@ -401,10 +382,6 @@ func create_tree(pos: Vector3) -> void:
 	var tree := Node3D.new()
 	tree.position = pos
 	add_child(tree)
-
-	var trunk_color := Color(
-		0.37, 0.25, 0.16
-	)
 
 	var leaf_color := Color(
 		rng.randf_range(0.16, 0.24),
@@ -416,7 +393,7 @@ func create_tree(pos: Vector3) -> void:
 		Vector3(0, 1.2, 0),
 		0.28,
 		2.4,
-		trunk_color,
+		Color(0.37, 0.25, 0.16),
 		tree
 	)
 
@@ -449,22 +426,19 @@ func create_flower_bed(pos: Vector3) -> void:
 
 	for x in [-1.4, 0.0, 1.4]:
 		for z in [-1.4, 0.0, 1.4]:
-			var flower_color := Color.from_hsv(
-				rng.randf(),
-				0.75,
-				0.95
-			)
-
 			make_sphere(
 				Vector3(x, 0.35, z),
 				0.32,
-				flower_color,
+				Color.from_hsv(
+					rng.randf(),
+					0.75,
+					0.95
+				),
 				bed
 			)
 
 
 func create_street_lights() -> void:
-	# 12 street lights total.
 	for x in [-30.0, 0.0, 30.0]:
 		for z in [-45.0, -15.0, 15.0, 45.0]:
 			create_street_light(
@@ -477,9 +451,7 @@ func create_street_light(pos: Vector3) -> void:
 	lamp.position = pos
 	add_child(lamp)
 
-	var metal := Color(
-		0.22, 0.25, 0.28
-	)
+	var metal := Color(0.22, 0.25, 0.28)
 
 	make_cylinder(
 		Vector3(0, 2.4, 0),
@@ -520,37 +492,160 @@ func create_cars() -> void:
 			road_x + (
 				2.0 if direction > 0.0 else -2.0
 			),
-			0.65,
+			0.78,
 			float(i * 9 - 50)
 		)
 
-		var color := Color.from_hsv(
+		# All car models face local -Z.
+		# Rotate models traveling toward +Z.
+		if direction > 0.0:
+			car.rotation.y = PI
+
+		var car_color := Color.from_hsv(
 			float(i) / 12.0,
-			0.75,
-			0.9
+			0.72,
+			0.92
 		)
 
+		var car_type := i % 3
+
+		create_detailed_car(
+			car,
+			car_color,
+			car_type
+		)
+
+		cars.append(car)
+		car_speeds.append(
+			direction * (5.0 + float(i % 4))
+		)
+
+
+func create_detailed_car(
+	car: Node3D,
+	color: Color,
+	car_type: int
+) -> void:
+	var glass := Color(0.12, 0.24, 0.34)
+	var tire := Color(0.055, 0.06, 0.07)
+	var metal := Color(0.34, 0.37, 0.40)
+	var headlight := Color(1.0, 0.95, 0.75)
+	var taillight := Color(0.85, 0.12, 0.10)
+
+	var body_length := 3.8
+	var body_height := 0.72
+	var cabin_height := 0.72
+	var cabin_length := 2.0
+
+	# 0 = sedan, 1 = SUV, 2 = van
+	if car_type == 1:
+		body_length = 4.1
+		body_height = 0.95
+		cabin_height = 0.85
+		cabin_length = 2.3
+
+	elif car_type == 2:
+		body_length = 4.5
+		body_height = 1.05
+		cabin_height = 1.0
+		cabin_length = 3.0
+
+	var half_length := body_length / 2.0
+
+	# Main body
+	make_box(
+		Vector3(0, 0, 0),
+		Vector3(2.0, body_height, body_length),
+		color,
+		car
+	)
+
+	# Cabin
+	make_box(
+		Vector3(0, body_height / 2.0 + cabin_height / 2.0 - 0.05, 0.12),
+		Vector3(1.72, cabin_height, cabin_length),
+		glass,
+		car
+	)
+
+	# Roof
+	make_box(
+		Vector3(0, body_height / 2.0 + cabin_height - 0.05, 0.12),
+		Vector3(1.78, 0.14, cabin_length - 0.12),
+		color,
+		car
+	)
+
+	# Hood
+	if car_type != 2:
 		make_box(
-			Vector3.ZERO,
-			Vector3(2.0, 1.0, 3.8),
+			Vector3(0, body_height / 2.0 + 0.03, -half_length + 0.55),
+			Vector3(1.88, 0.12, 0.95),
 			color,
 			car
 		)
 
+	# Front and rear bumpers
+	make_box(
+		Vector3(0, -0.20, -half_length - 0.04),
+		Vector3(1.85, 0.18, 0.14),
+		metal,
+		car
+	)
+
+	make_box(
+		Vector3(0, -0.20, half_length + 0.04),
+		Vector3(1.85, 0.18, 0.14),
+		metal,
+		car
+	)
+
+	# Headlights and taillights
+	for x in [-0.74, 0.74]:
 		make_box(
-			Vector3(0, 0.7, 0),
-			Vector3(1.6, 0.65, 2.0),
-			Color(0.16, 0.29, 0.39),
+			Vector3(x, 0.06, -half_length - 0.08),
+			Vector3(0.40, 0.22, 0.08),
+			headlight,
 			car
 		)
 
-		cars.append(car)
-
-		car_speeds.append(
-			direction * (
-				5.0 + float(i % 4)
-			)
+		make_box(
+			Vector3(x, 0.06, half_length + 0.08),
+			Vector3(0.40, 0.22, 0.08),
+			taillight,
+			car
 		)
+
+	# Four wheels, rotated to align axles along X.
+	for x in [-1.04, 1.04]:
+		for z in [
+			-half_length + 0.8,
+			half_length - 0.8
+		]:
+			var wheel := make_cylinder(
+				Vector3(x, -0.37, z),
+				0.43,
+				0.28,
+				tire,
+				car
+			)
+
+			wheel.rotation.z = PI / 2.0
+
+			# Wheel hub
+			var hub := make_cylinder(
+				Vector3(
+					x + (0.15 if x > 0.0 else -0.15),
+					-0.37,
+					z
+				),
+				0.20,
+				0.04,
+				metal,
+				car
+			)
+
+			hub.rotation.z = PI / 2.0
 
 
 func _process(delta: float) -> void:
@@ -559,7 +654,6 @@ func _process(delta: float) -> void:
 
 	for i in range(cars.size()):
 		var car := cars[i]
-
 		car.position.z += car_speeds[i] * delta
 
 		if car.position.z > 55.0:
