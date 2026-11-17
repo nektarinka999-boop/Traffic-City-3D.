@@ -1,22 +1,31 @@
 
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://city.gd" id="1_city"]
+[ext_resource type="Script" path="res://camera_control.gd" id="2_camera"]
 
-[node name="TrafficCity3D" type="Node3D"]
+[node name="Main" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
-rotation_degrees = Vector3(-55, -30, 0)
-light_energy = 1.5
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 30, 0)
+light_energy = 1.4
 shadow_enabled = true
 
 [node name="Camera3D" type="Camera3D" parent="."]
-position = Vector3(65, 75, 85)
-rotation_degrees = Vector3(-38, 38, 0)
+transform = Transform3D(0.707107, -0.408248, 0.57735, 0, 0.816497, 0.57735, -0.707107, -0.408248, 0.57735, 65, 80, 65)
 current = true
-fov = 75.0
+fov = 65.0
+script = ExtResource("2_camera")
 
 [node name="City" type="Node3D" parent="."]
 script = ExtResource("1_city")
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 1
+background_color = Color(0.29, 0.29, 0.29, 1)
+ambient_light_source = 2
+ambient_light_color = Color(1, 1, 1, 1)
+ambient_light_energy = 0.65
