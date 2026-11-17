@@ -1,5 +1,5 @@
 
-name: Traffic City 3D - Android APK
+name: Traffic City 3D - Android APK 14
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     container:
       image: barichello/godot-ci:4.3
@@ -19,74 +19,69 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Prepare diagnostics
+      - name: Prepare folders
         shell: bash
         run: |
-          mkdir -p diagnostics build
-          godot --version | tee diagnostics/godot-version.txt
+          mkdir -p build diagnostics
+          godot --version
 
-      - name: Locate Android tools
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          {
-            echo "=== ENVIRONMENT ==="
-            env | grep -E 'ANDROID|JAVA|GODOT|HOME' | sort || true
-
-            echo "=== JAVA ==="
-            command -v java || true
-            java -version 2>&1 || true
-
-            echo "=== SDK LOCATIONS ==="
-            ls -ld /opt/android-sdk /opt/android-sdk-linux \
-              /usr/local/lib/android/sdk 2>/dev/null || true
-
-            echo "=== EXPORT TEMPLATES ==="
-            find /root /opt "$HOME" \
-              -name android_debug.apk \
-              -type f 2>/dev/null || true
-
-          } | tee diagnostics/tools.log
-
-      - name: Configure Android environment
+      - name: Install Android command line tools
         shell: bash
         run: |
           set -euo pipefail
 
-          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
 
-          if [ -z "$SDK" ]; then
-            for candidate in \
-              /opt/android-sdk \
-              /opt/android-sdk-linux \
-              /usr/local/lib/android/sdk; do
-              if [ -d "$candidate/platforms" ]; then
-                SDK="$candidate"
-                break
-              fi
-            done
-          fi
+          cd /tmp
+          wget -q \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            -O android-tools.zip
 
-          if [ -z "$SDK" ] || [ ! -d "$SDK/platforms" ]; then
-            echo "Android SDK not found" | tee diagnostics/sdk-error.txt
-            exit 1
-          fi
+          unzip -q android-tools.zip -d android-tools
+
+          mv android-tools/cmdline-tools \
+            "$SDK/cmdline-tools/latest"
 
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
 
-          if [ -z "${JAVA_HOME:-}" ]; then
-            JAVA_BIN="$(readlink -f "$(command -v java)")"
-            JAVA_DIR="$(dirname "$(dirname "$JAVA_BIN")")"
-            echo "JAVA_HOME=$JAVA_DIR" >> "$GITHUB_ENV"
-          fi
+      - name: Install Android SDK 34
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          echo "SDK: $SDK"
-          ls "$SDK/platforms"
-          ls "$SDK/build-tools"
+          SDK="$ANDROID_HOME"
+          MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
 
-      - name: Prepare Godot export templates
+          yes | "$MANAGER" \
+            --sdk_root="$SDK" --licenses || true
+
+          "$MANAGER" --sdk_root="$SDK" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+          test -f "$SDK/platforms/android-34/android.jar"
+          test -f "$SDK/build-tools/34.0.0/aapt"
+
+          echo "Android SDK 34 installed"
+
+      - name: Locate Java 17
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          JAVA_BIN="$(readlink -f "$(command -v java)")"
+          JAVA_DIR="$(dirname "$(dirname "$JAVA_BIN")")"
+
+          echo "JAVA_HOME=$JAVA_DIR" >> "$GITHUB_ENV"
+
+          java -version
+
+      - name: Install Godot Android templates
         shell: bash
         run: |
           set -euo pipefail
@@ -95,26 +90,19 @@ jobs:
           mkdir -p "$TARGET"
 
           if [ ! -s "$TARGET/android_debug.apk" ]; then
-            FOUND="$(find /root /opt \
-              -path '*/4.3.stable/android_debug.apk' \
-              -type f -print -quit 2>/dev/null || true)"
-
-            if [ -n "$FOUND" ]; then
-              cp -a "$(dirname "$FOUND")/." "$TARGET/"
-            fi
-          fi
-
-          if [ ! -s "$TARGET/android_debug.apk" ]; then
             wget -q \
               https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz \
-              -O /tmp/templates.tpz
+              -O /tmp/godot-templates.tpz
 
-            unzip -q /tmp/templates.tpz -d /tmp/godot-templates
+            mkdir -p /tmp/godot-templates
+            unzip -q /tmp/godot-templates.tpz \
+              -d /tmp/godot-templates
+
             cp -a /tmp/godot-templates/templates/. "$TARGET/"
           fi
 
           test -s "$TARGET/android_debug.apk"
-          ls -lh "$TARGET/android_debug.apk"
+          test -s "$TARGET/android_release.apk"
 
       - name: Create debug signing key
         shell: bash
@@ -131,7 +119,7 @@ jobs:
             -validity 10000 \
             -storepass android \
             -keypass android \
-            -dname "CN=Android Debug,O=Traffic City,C=US"
+            -dname "CN=Traffic City 3D,O=Development,C=US"
 
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
@@ -210,7 +198,45 @@ jobs:
           cat diagnostics/import.log
           exit "$RESULT"
 
-      - name: Check Android settings
+      - name: Check Android environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "=== GODOT ==="
+            godot --version
+
+            echo "=== JAVA ==="
+            java -version 2>&1
+
+            echo "=== ANDROID SDK ==="
+            echo "$ANDROID_HOME"
+
+            echo "=== ANDROID PLATFORM ==="
+            ls -lh "$ANDROID_HOME/platforms/android-34/android.jar"
+
+            echo "=== BUILD TOOLS ==="
+            ls -lh "$ANDROID_HOME/build-tools/34.0.0/aapt"
+
+            echo "=== EXPORT TEMPLATE ==="
+            ls -lh \
+              "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
+
+            echo "=== KEYSTORE ==="
+            keytool -list \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey
+
+            echo "=== EXPORT PRESET ==="
+            cat export_presets.cfg
+
+          } > diagnostics/environment.log 2>&1
+
+          cat diagnostics/environment.log
+
+      - name: Check Godot settings
         shell: bash
         run: |
           set +e
@@ -227,7 +253,7 @@ jobs:
 
           exit 0
 
-      - name: Export Android APK
+      - name: Build Android APK
         shell: bash
         run: |
           set +e
@@ -240,35 +266,36 @@ jobs:
             > diagnostics/export.log 2>&1
 
           RESULT=$?
+
           cat diagnostics/export.log
 
           if [ "$RESULT" -ne 0 ]; then
-            echo "::error::Android export failed"
+            echo "::error::Godot Android export failed"
             exit 1
           fi
 
           if [ ! -s build/TrafficCity3D.apk ]; then
-            echo "::error::APK file was not created"
+            echo "::error::APK was not created"
             exit 1
           fi
 
           echo "APK created successfully"
-          ls -lh build/TrafficCity3D.apk
 
-      - name: Verify APK
+      - name: Verify Android APK
         if: success()
         shell: bash
         run: |
           set -euo pipefail
 
           APK="build/TrafficCity3D.apk"
-          AAPT="$(find "$ANDROID_HOME/build-tools" \
-            -name aapt -type f | sort -V | tail -1)"
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" \
-            -name apksigner -type f | sort -V | tail -1)"
 
-          "$AAPT" dump badging "$APK" | head -20
-          "$APKSIGNER" verify "$APK"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" \
+            dump badging "$APK"
+
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" \
+            verify "$APK"
+
+          ls -lh "$APK"
 
       - name: Upload diagnostics
         if: always()
@@ -278,7 +305,7 @@ jobs:
           path: diagnostics/
           if-no-files-found: ignore
 
-      - name: Upload APK
+      - name: Upload Android APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
