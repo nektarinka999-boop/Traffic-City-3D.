@@ -23,10 +23,13 @@ jobs:
           java-version: '17'
 
       - name: Install Android SDK
+        shell: bash
         run: |
+          set -e
           SDK_ROOT="$HOME/android-sdk"
           mkdir -p "$SDK_ROOT/cmdline-tools"
           cd /tmp
+
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip
           mv cmdline-tools "$SDK_ROOT/cmdline-tools/latest"
@@ -41,10 +44,10 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager \
             "platform-tools" \
-            "platforms;android-34" \
             "platforms;android-35" \
-            "build-tools;34.0.0" \
-            "build-tools;35.0.0"
+            "build-tools;35.0.0" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
       - name: Install Godot 4.3
         run: |
@@ -60,19 +63,37 @@ jobs:
           unzip -q Godot_v4.3-stable_export_templates.tpz
           mv templates/* ~/.local/share/godot/export_templates/4.3.stable/
 
-      - name: Import project
+      - name: Create debug keystore
         run: |
-          godot --headless --path . --editor --import --quit
+          mkdir -p "$HOME/.android"
+
+          keytool -genkeypair \
+            -keystore "$HOME/.android/debug.keystore" \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Android Debug,O=Traffic City 3D,C=US"
+
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
 
       - name: Configure Godot Android SDK
         run: |
-          mkdir -p ~/.config/godot
-          cat > ~/.config/godot/editor_settings-4.tres <<EOF
+          mkdir -p "$HOME/.config/godot"
+
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
           EOF
 
       - name: Create Android export preset
@@ -101,18 +122,47 @@ jobs:
           package/unique_name="com.trafficcity3d.game"
           package/name="Traffic City 3D"
           package/signed=true
+          version/code=1
+          version/name="0.1"
           architectures/arm64-v8a=true
           architectures/armeabi-v7a=false
           architectures/x86=false
           architectures/x86_64=false
+          keystore/debug=""
+          keystore/debug_user=""
+          keystore/debug_password=""
           EOF
 
+      - name: Import project
+        run: |
+          godot --headless --path . --editor --import --quit
+
+      - name: Verify build environment
+        run: |
+          echo "Checking project files"
+          test -f project.godot
+          test -f main.tscn
+          test -f city.gd
+
+          echo "Checking Android SDK"
+          ls -la "$ANDROID_HOME/build-tools"
+
+          echo "Checking debug keystore"
+          test -f "$HOME/.android/debug.keystore"
+
+          echo "Checking export templates"
+          ls -la "$HOME/.local/share/godot/export_templates/4.3.stable"
+
       - name: Build APK
+        shell: bash
         run: |
           mkdir -p build
+
           godot --headless --verbose --path . \
             --export-debug "Android" \
             build/TrafficCity3D.apk
+
+          test -s build/TrafficCity3D.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
