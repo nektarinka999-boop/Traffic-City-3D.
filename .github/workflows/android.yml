@@ -1,0 +1,98 @@
+
+name: Build Traffic City 3D APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          sdkmanager "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Install Godot 4.3
+        run: |
+          wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+          unzip -q Godot_v4.3-stable_linux.x86_64.zip
+          chmod +x Godot_v4.3-stable_linux.x86_64
+          sudo mv Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
+
+      - name: Install export templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+          unzip -q Godot_v4.3-stable_export_templates.tpz
+          mv templates/* ~/.local/share/godot/export_templates/4.3.stable/
+
+      - name: Import project
+        run: |
+          godot --headless --path . --editor --import --quit
+
+      - name: Create Android export preset
+        run: |
+          cat > export_presets.cfg <<'EOF'
+          [preset.0]
+
+          name="Android"
+          platform="Android"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="build/TrafficCity3D.apk"
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          encrypt_pck=false
+          encrypt_directory=false
+
+          [preset.0.options]
+
+          gradle_build/use_gradle_build=false
+          package/unique_name="com.trafficcity3d.game"
+          package/name="Traffic City 3D"
+          package/signed=true
+          architectures/arm64-v8a=true
+          architectures/armeabi-v7a=false
+          architectures/x86=false
+          architectures/x86_64=false
+          EOF
+
+      - name: Build APK
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+        run: |
+          mkdir -p build
+          godot --headless --path . \
+            --export-debug "Android" \
+            build/TrafficCity3D.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrafficCity3D-Android
+          path: build/TrafficCity3D.apk
+          if-no-files-found: error
