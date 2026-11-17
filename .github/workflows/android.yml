@@ -42,7 +42,7 @@ jobs:
           echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
 
-      - name: Install SDK packages
+      - name: Install Android packages
         shell: bash
         run: |
           set -euo pipefail
@@ -52,9 +52,7 @@ jobs:
           sdkmanager \
             "platform-tools" \
             "platforms;android-34" \
-            "platforms;android-35" \
-            "build-tools;34.0.0" \
-            "build-tools;35.0.0"
+            "build-tools;34.0.0"
 
       - name: Install Godot 4.3
         shell: bash
@@ -73,7 +71,7 @@ jobs:
 
           godot --version
 
-      - name: Install Android export templates
+      - name: Install Godot export templates
         shell: bash
         run: |
           set -euo pipefail
@@ -88,9 +86,8 @@ jobs:
           mv templates/* "$DIR/"
 
           test -s "$DIR/android_debug.apk"
-          test -s "$DIR/android_release.apk"
 
-      - name: Generate Android debug key
+      - name: Generate debug signing key
         shell: bash
         run: |
           set -euo pipefail
@@ -111,7 +108,7 @@ jobs:
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
 
-      - name: Configure Godot Android editor
+      - name: Configure Godot editor
         shell: bash
         run: |
           set -euo pipefail
@@ -129,12 +126,12 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
 
-      - name: Create export preset
+      - name: Create Android export preset
         shell: bash
         run: |
           set -euo pipefail
 
-          cat > export_presets.cfg <<'EOF'
+          cat > export_presets.cfg <<EOF
           [preset.0]
 
           name="Android"
@@ -164,12 +161,12 @@ jobs:
           architectures/armeabi-v7a=false
           architectures/x86=false
           architectures/x86_64=false
-          keystore/debug=""
-          keystore/debug_user=""
-          keystore/debug_password=""
+          keystore/debug="$HOME/.android/debug.keystore"
+          keystore/debug_user="androiddebugkey"
+          keystore/debug_password="android"
           EOF
 
-      - name: Initialize Godot editor
+      - name: Import project
         shell: bash
         run: |
           set -euo pipefail
@@ -180,37 +177,23 @@ jobs:
             --import \
             --quit
 
-      - name: Validate Android configuration
+      - name: Validate configuration
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "=== GODOT VERSION ==="
-          godot --version
-
-          echo "=== PROJECT ==="
           test -s project.godot
           test -s main.tscn
           test -s city.gd
-
-          echo "=== SDK ==="
-          test -d "$ANDROID_HOME/platforms/android-34"
-          test -d "$ANDROID_HOME/build-tools/34.0.0"
-          test -f "$ANDROID_HOME/platform-tools/adb"
-
-          echo "=== JAVA ==="
-          java -version
-          test -d "$JAVA_HOME"
-
-          echo "=== KEYSTORE ==="
-          test -s "$HOME/.android/debug.keystore"
-
-          echo "=== EXPORT PRESET ==="
           test -s export_presets.cfg
 
-          echo "Environment checks passed"
+          test -d "$ANDROID_HOME/platforms/android-34"
+          test -d "$ANDROID_HOME/build-tools/34.0.0"
+          test -s "$HOME/.android/debug.keystore"
 
-      - name: Build APK and collect diagnostics
+          echo "Project and SDK checks passed"
+
+      - name: Build APK
         shell: bash
         run: |
           mkdir -p build diagnostics
@@ -228,30 +211,16 @@ jobs:
 
           cat diagnostics/export.log
 
-          echo "=== EXPORT EXIT CODE ==="
-          echo "$RESULT"
-
           echo "=== ERROR SUMMARY ==="
           grep -inE \
-            'error|warning|missing|invalid|failed|cannot|sdk|keystore' \
+            'error|warning|missing|invalid|failed|cannot' \
             diagnostics/export.log || true
 
-          echo "=== SDK PACKAGES ==="
-          sdkmanager --list_installed \
-            > diagnostics/sdk-packages.txt 2>&1
-
-          echo "=== GODOT CONFIGURATION ==="
-          grep -E \
-            'android_sdk_path|java_sdk_path|debug_keystore =' \
-            "$HOME/.config/godot/editor_settings-4.tres" \
-            > diagnostics/editor-config.txt
-
-          echo "=== EXPORT PRESET ==="
           cp export_presets.cfg \
             diagnostics/export-presets.txt
 
           if [ "$RESULT" -ne 0 ]; then
-            echo "::error::Android export failed"
+            echo "::error::Godot Android export failed"
             exit 1
           fi
 
