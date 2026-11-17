@@ -1,28 +1,25 @@
 
 @tool
-extends EditorScript
+extends SceneTree
 
-func _run() -> void:
-    print("=== TRAFFIC CITY 3D EXPORT DIAGNOSTICS ===")
+func _initialize() -> void:
+    print("=== TRAFFIC CITY 3D DIAGNOSTICS ===")
 
-    var presets := EditorExport.get_export_presets()
-    print("Number of export presets: ", presets.size())
+    var settings := EditorInterface.get_editor_settings()
 
-    for preset in presets:
-        print("Preset name: ", preset.get_name())
-        print("Platform: ", preset.get_platform().get_name())
+    var names := [
+        "export/android/android_sdk_path",
+        "export/android/java_sdk_path",
+        "export/android/debug_keystore",
+        "export/android/debug_keystore_user"
+    ]
 
-        var platform := preset.get_platform()
-        var options := platform.get_export_options()
+    for name in names:
+        print("SETTING: ", name)
+        print("EXISTS: ", settings.has_setting(name))
 
-        for option in options:
-            var name: String = option["name"]
-            var warning := platform.get_export_option_warning(
-                preset,
-                name
-            )
-
-            if not warning.is_empty():
-                print("WARNING FOR ", name, ": ", warning)
+        if settings.has_setting(name):
+            print("VALUE: ", settings.get_setting(name))
 
     print("=== DIAGNOSTICS FINISHED ===")
+    quit()
