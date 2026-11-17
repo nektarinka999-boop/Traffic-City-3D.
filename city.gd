@@ -2,7 +2,7 @@
 extends Node3D
 
 # TRAFFIC CITY 3D
-# Version 0.3 - Beautiful City
+# Version 0.4 - Green City
 # Godot 4.3 / Android
 
 var cars: Array[Node3D] = []
@@ -33,7 +33,6 @@ var building_colors := [
 
 func _ready() -> void:
 	rng.seed = 2026
-
 	create_debug_indicator()
 	call_deferred("start_city")
 
@@ -45,7 +44,7 @@ func create_debug_indicator() -> void:
 
 	var panel := PanelContainer.new()
 	panel.position = Vector2(15, 15)
-	panel.custom_minimum_size = Vector2(320, 52)
+	panel.custom_minimum_size = Vector2(360, 52)
 	layer.add_child(panel)
 
 	var style := StyleBoxFlat.new()
@@ -88,13 +87,19 @@ func start_city() -> void:
 	update_status("Creating bridge...")
 	create_bridge()
 
+	update_status("Creating green areas...")
+	create_green_areas()
+
+	update_status("Creating street lights...")
+	create_street_lights()
+
 	update_status("Creating cars...")
 	create_cars()
 
 	city_ready = true
 
 	update_status(
-		"City ready | Cars: "
+		"Green City ready | Cars: "
 		+ str(cars.size())
 		+ " | Objects: "
 		+ str(created_objects)
@@ -129,6 +134,69 @@ func make_box(
 	return node
 
 
+func make_cylinder(
+	pos: Vector3,
+	radius: float,
+	height: float,
+	color: Color,
+	parent: Node3D = null
+) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = 8
+
+	node.mesh = mesh
+	node.position = pos
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.85
+	node.material_override = material
+
+	if parent == null:
+		add_child(node)
+	else:
+		parent.add_child(node)
+
+	created_objects += 1
+	return node
+
+
+func make_sphere(
+	pos: Vector3,
+	radius: float,
+	color: Color,
+	parent: Node3D = null
+) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+
+	var mesh := SphereMesh.new()
+	mesh.radius = radius
+	mesh.height = radius * 2.0
+	mesh.radial_segments = 8
+	mesh.rings = 4
+
+	node.mesh = mesh
+	node.position = pos
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.9
+	node.material_override = material
+
+	if parent == null:
+		add_child(node)
+	else:
+		parent.add_child(node)
+
+	created_objects += 1
+	return node
+
+
 func create_ground() -> void:
 	make_box(
 		Vector3(0, -0.2, 0),
@@ -152,9 +220,6 @@ func create_roads() -> void:
 			asphalt
 		)
 
-	# Sidewalks: short segments between intersections.
-	# This avoids covering the asphalt.
-
 	var sidewalk_positions := [
 		-45.0, -15.0, 15.0, 45.0
 	]
@@ -177,7 +242,6 @@ func create_roads() -> void:
 					sidewalk
 				)
 
-	# Yellow road markings
 	for x in [-30.0, 0.0, 30.0]:
 		for z in range(-52, 53, 8):
 			make_box(
@@ -190,7 +254,7 @@ func create_roads() -> void:
 		for x in range(-52, 53, 8):
 			make_box(
 				Vector3(float(x), 0.13, z),
-				Vector3(3.0, 0.02, 0.18),
+				Vector3(3, 0.02, 0.18),
 				marking
 			)
 
@@ -223,7 +287,6 @@ func create_building(
 	building.position = pos
 	add_child(building)
 
-	# Foundation
 	make_box(
 		Vector3(0, 0.25, 0),
 		Vector3(11.0, 0.5, 11.0),
@@ -231,7 +294,6 @@ func create_building(
 		building
 	)
 
-	# Main building
 	make_box(
 		Vector3(0, height / 2.0 + 0.5, 0),
 		Vector3(10.0, height, 10.0),
@@ -239,7 +301,6 @@ func create_building(
 		building
 	)
 
-	# Roof
 	make_box(
 		Vector3(0, height + 0.7, 0),
 		Vector3(10.5, 0.4, 10.5),
@@ -247,7 +308,6 @@ func create_building(
 		building
 	)
 
-	# Entrance
 	make_box(
 		Vector3(0, 1.65, 5.06),
 		Vector3(2.3, 2.5, 0.12),
@@ -255,7 +315,6 @@ func create_building(
 		building
 	)
 
-	# Entrance canopy
 	make_box(
 		Vector3(0, 3.0, 5.6),
 		Vector3(3.2, 0.18, 1.3),
@@ -263,7 +322,6 @@ func create_building(
 		building
 	)
 
-	# Windows - front and back
 	var floor_count := int(height / 3.0)
 
 	for floor_index in range(floor_count):
@@ -321,6 +379,129 @@ func create_bridge() -> void:
 			Vector3(0.3, 1, 28),
 			concrete
 		)
+
+
+func create_green_areas() -> void:
+	# 16 trees, placed near building corners.
+	# Avoid roads and sidewalks.
+
+	for x in [-45.0, -15.0, 15.0, 45.0]:
+		for z in [-45.0, -15.0, 15.0, 45.0]:
+			create_tree(
+				Vector3(x + 9.0, 0, z + 9.0)
+			)
+
+	# Four small flower beds in the outer corners.
+	for x in [-54.0, 54.0]:
+		for z in [-54.0, 54.0]:
+			create_flower_bed(Vector3(x, 0, z))
+
+
+func create_tree(pos: Vector3) -> void:
+	var tree := Node3D.new()
+	tree.position = pos
+	add_child(tree)
+
+	var trunk_color := Color(
+		0.37, 0.25, 0.16
+	)
+
+	var leaf_color := Color(
+		rng.randf_range(0.16, 0.24),
+		rng.randf_range(0.43, 0.59),
+		rng.randf_range(0.18, 0.29)
+	)
+
+	make_cylinder(
+		Vector3(0, 1.2, 0),
+		0.28,
+		2.4,
+		trunk_color,
+		tree
+	)
+
+	make_sphere(
+		Vector3(0, 3.25, 0),
+		1.45,
+		leaf_color,
+		tree
+	)
+
+	make_sphere(
+		Vector3(-0.65, 2.9, 0),
+		0.85,
+		leaf_color,
+		tree
+	)
+
+
+func create_flower_bed(pos: Vector3) -> void:
+	var bed := Node3D.new()
+	bed.position = pos
+	add_child(bed)
+
+	make_box(
+		Vector3(0, 0.08, 0),
+		Vector3(5.0, 0.16, 5.0),
+		Color(0.22, 0.35, 0.20),
+		bed
+	)
+
+	for x in [-1.4, 0.0, 1.4]:
+		for z in [-1.4, 0.0, 1.4]:
+			var flower_color := Color.from_hsv(
+				rng.randf(),
+				0.75,
+				0.95
+			)
+
+			make_sphere(
+				Vector3(x, 0.35, z),
+				0.32,
+				flower_color,
+				bed
+			)
+
+
+func create_street_lights() -> void:
+	# 12 street lights total.
+	for x in [-30.0, 0.0, 30.0]:
+		for z in [-45.0, -15.0, 15.0, 45.0]:
+			create_street_light(
+				Vector3(x + 7.0, 0, z)
+			)
+
+
+func create_street_light(pos: Vector3) -> void:
+	var lamp := Node3D.new()
+	lamp.position = pos
+	add_child(lamp)
+
+	var metal := Color(
+		0.22, 0.25, 0.28
+	)
+
+	make_cylinder(
+		Vector3(0, 2.4, 0),
+		0.10,
+		4.8,
+		metal,
+		lamp
+	)
+
+	make_box(
+		Vector3(0.5, 4.75, 0),
+		Vector3(1.0, 0.12, 0.12),
+		metal,
+		lamp
+	)
+
+	make_box(
+		Vector3(0.9, 4.65, 0),
+		Vector3(0.55, 0.12, 0.45),
+		Color(1.0, 0.92, 0.68),
+		lamp
+	)
 
 
 func create_cars() -> void:
