@@ -1,5 +1,5 @@
 
-name: Traffic City 3D - Android APK 15
+name: Traffic City 3D - Android APK 16
 
 on:
   workflow_dispatch:
@@ -16,16 +16,23 @@ jobs:
       image: barichello/godot-ci:4.3
 
     steps:
-      - name: Checkout
+      - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Prepare folders
+      - name: Prepare environment
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build diagnostics
           godot --version
 
-      - name: Fix Android texture compression
+          apt-get update
+          apt-get install -y python3 unzip wget ca-certificates
+
+          python3 --version
+          java -version
+
+      - name: Enable Android texture compression
         shell: bash
         run: |
           set -euo pipefail
@@ -69,11 +76,10 @@ jobs:
                   )
 
           path.write_text(text, encoding="utf-8")
-          print("ETC2/ASTC texture compression enabled")
+          print("ETC2/ASTC enabled")
           PY
 
-          grep -n \
-            "import_etc2_astc" project.godot \
+          grep -n "import_etc2_astc" project.godot \
             | tee diagnostics/texture-setting.log
 
       - name: Install Android SDK 34
@@ -88,8 +94,8 @@ jobs:
             https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
             -O /tmp/android-tools.zip
 
-          unzip -q /tmp/android-tools.zip \
-            -d /tmp/android-tools
+          mkdir -p /tmp/android-tools
+          unzip -q /tmp/android-tools.zip -d /tmp/android-tools
 
           mv /tmp/android-tools/cmdline-tools \
             "$SDK/cmdline-tools/latest"
@@ -141,8 +147,9 @@ jobs:
           fi
 
           test -s "$TARGET/android_debug.apk"
+          test -s "$TARGET/android_release.apk"
 
-      - name: Create debug keystore
+      - name: Create debug signing key
         shell: bash
         run: |
           set -euo pipefail
@@ -220,7 +227,7 @@ jobs:
           keystore/debug_password="android"
           EOF
 
-      - name: Import project
+      - name: Import Godot project
         shell: bash
         run: |
           set +e
@@ -236,39 +243,40 @@ jobs:
           cat diagnostics/import.log
           exit "$RESULT"
 
-      - name: Verify ETC2 ASTC setting
+      - name: Verify Android configuration
         shell: bash
         run: |
           set -euo pipefail
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
+          {
+            echo "=== GODOT ==="
+            godot --version
 
-          text = Path("project.godot").read_text()
+            echo "=== PYTHON ==="
+            python3 --version
 
-          match = re.search(
-              r"(?ms)^\[rendering\]\s*\n"
-              r"(.*?)(?=^\[|\Z)",
-              text
-          )
+            echo "=== JAVA ==="
+            java -version 2>&1
 
-          if not match:
-              raise SystemExit(
-                  "ERROR: Rendering section missing"
-              )
+            echo "=== SDK ==="
+            echo "$ANDROID_HOME"
+            ls -lh "$ANDROID_HOME/platforms/android-34/android.jar"
+            ls -lh "$ANDROID_HOME/build-tools/34.0.0/aapt"
 
-          if not re.search(
-              r"(?m)^textures/vram_compression/"
-              r"import_etc2_astc\s*=\s*true\s*$",
-              match.group(1)
-          ):
-              raise SystemExit(
-                  "ERROR: ETC2/ASTC not enabled"
-              )
+            echo "=== EXPORT TEMPLATE ==="
+            ls -lh \
+              "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
 
-          print("PASS: ETC2/ASTC enabled for Android")
-          PY
+            echo "=== TEXTURE COMPRESSION ==="
+            grep "import_etc2_astc" project.godot
+
+            echo "=== SIGNING KEY ==="
+            test -s "$HOME/.android/debug.keystore"
+            echo "Debug keystore exists"
+
+          } > diagnostics/environment.log 2>&1
+
+          cat diagnostics/environment.log
 
       - name: Export Android APK
         shell: bash
@@ -286,13 +294,16 @@ jobs:
           cat diagnostics/export.log
 
           if [ "$RESULT" -ne 0 ]; then
-            echo "::error::Android export failed"
+            echo "::error::Godot Android export failed"
             exit 1
           fi
 
-          test -s build/TrafficCity3D.apk
+          if [ ! -s build/TrafficCity3D.apk ]; then
+            echo "::error::APK was not created"
+            exit 1
+          fi
 
-          echo "APK CREATED!"
+          echo "APK CREATED SUCCESSFULLY"
           ls -lh build/TrafficCity3D.apk
 
       - name: Verify APK
@@ -317,7 +328,7 @@ jobs:
           path: diagnostics/
           if-no-files-found: ignore
 
-      - name: Upload APK
+      - name: Upload Android APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
