@@ -1,5 +1,7 @@
 
-[gd_scene load_steps=1 format=3]
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://city.gd" id="1_city"]
 
 [node name="TrafficCity3D" type="Node3D"]
 
@@ -11,7 +13,10 @@ light_energy = 1.5
 shadow_enabled = true
 
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 22, 28, 38)
+position = Vector3(65, 75, 85)
+rotation_degrees = Vector3(-38, 38, 0)
 current = true
+fov = 75.0
 
 [node name="City" type="Node3D" parent="."]
+script = ExtResource("1_city")
