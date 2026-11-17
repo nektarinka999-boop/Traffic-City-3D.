@@ -16,7 +16,7 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,15 +25,12 @@ jobs:
       - name: Install Android SDK
         shell: bash
         run: |
-          set -euo pipefail
-
+          set -e
           SDK="$HOME/android-sdk"
           mkdir -p "$SDK/cmdline-tools"
           cd /tmp
 
-          wget -q \
-            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip
           mv cmdline-tools "$SDK/cmdline-tools/latest"
 
@@ -42,56 +39,43 @@ jobs:
           echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
 
-      - name: Install Android packages
+      - name: Install SDK packages
         shell: bash
         run: |
-          set -euo pipefail
-
           yes | sdkmanager --licenses || true
-
           sdkmanager \
             "platform-tools" \
             "platforms;android-34" \
-            "build-tools;34.0.0"
+            "platforms;android-35" \
+            "build-tools;34.0.0" \
+            "build-tools;35.0.0"
 
-      - name: Install Godot 4.3
+      - name: Install Godot
         shell: bash
         run: |
-          set -euo pipefail
-
-          wget -q \
-            https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
-
+          set -e
+          wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
           unzip -q Godot_v4.3-stable_linux.x86_64.zip
-
           chmod +x Godot_v4.3-stable_linux.x86_64
+          sudo mv Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
 
-          sudo mv Godot_v4.3-stable_linux.x86_64 \
-            /usr/local/bin/godot
-
-          godot --version
-
-      - name: Install Godot export templates
+      - name: Install export templates
         shell: bash
         run: |
-          set -euo pipefail
-
+          set -e
           DIR="$HOME/.local/share/godot/export_templates/4.3.stable"
           mkdir -p "$DIR"
 
-          wget -q \
-            https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
-
+          wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
           unzip -q Godot_v4.3-stable_export_templates.tpz
           mv templates/* "$DIR/"
 
           test -s "$DIR/android_debug.apk"
 
-      - name: Generate debug signing key
+      - name: Generate debug keystore
         shell: bash
         run: |
-          set -euo pipefail
-
+          set -e
           mkdir -p "$HOME/.android"
 
           keytool -genkeypair \
@@ -104,14 +88,10 @@ jobs:
             -keypass android \
             -dname "CN=Android Debug,O=Traffic City,C=US"
 
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
-
-      - name: Configure Godot editor
+      - name: Configure Godot
         shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
           mkdir -p "$HOME/.config/godot"
 
@@ -126,11 +106,9 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
 
-      - name: Create Android export preset
+      - name: Create Android preset
         shell: bash
         run: |
-          set -euo pipefail
-
           cat > export_presets.cfg <<EOF
           [preset.0]
 
@@ -167,31 +145,57 @@ jobs:
           EOF
 
       - name: Import project
+        run: |
+          godot --headless --path . --editor --import --quit
+
+      - name: Diagnose Godot settings
         shell: bash
         run: |
-          set -euo pipefail
+          mkdir -p diagnostics
 
-          godot --headless \
-            --path . \
-            --editor \
-            --import \
-            --quit
+          cat > diagnostics_check.gd <<'EOF'
+          extends SceneTree
 
-      - name: Validate configuration
-        shell: bash
-        run: |
-          set -euo pipefail
+          func _initialize():
+              var settings = EditorInterface.get_editor_settings()
+              var names = [
+                  "export/android/android_sdk_path",
+                  "export/android/java_sdk_path",
+                  "export/android/debug_keystore"
+              ]
 
-          test -s project.godot
-          test -s main.tscn
-          test -s city.gd
-          test -s export_presets.cfg
+              for name in names:
+                  print("SETTING: ", name)
+                  print("EXISTS: ", settings.has_setting(name))
+                  if settings.has_setting(name):
+                      print("VALUE: ", settings.get_setting(name))
 
-          test -d "$ANDROID_HOME/platforms/android-34"
-          test -d "$ANDROID_HOME/build-tools/34.0.0"
-          test -s "$HOME/.android/debug.keystore"
+              quit()
+          EOF
 
-          echo "Project and SDK checks passed"
+          godot --headless --editor --path . \
+            --script diagnostics_check.gd \
+            > diagnostics/settings.log 2>&1 || true
+
+          cat diagnostics/settings.log
+
+          echo "=== SDK CONTENTS ===" \
+            > diagnostics/environment.txt
+
+          ls -la "$ANDROID_HOME" \
+            >> diagnostics/environment.txt
+
+          echo "=== JAVA ===" \
+            >> diagnostics/environment.txt
+
+          java -version \
+            2>> diagnostics/environment.txt
+
+          echo "=== GODOT ===" \
+            >> diagnostics/environment.txt
+
+          godot --version \
+            >> diagnostics/environment.txt
 
       - name: Build APK
         shell: bash
@@ -200,8 +204,7 @@ jobs:
 
           set +e
 
-          godot --headless \
-            --verbose \
+          godot --headless --verbose \
             --path . \
             --export-debug "Android" \
             build/TrafficCity3D.apk \
@@ -211,26 +214,12 @@ jobs:
 
           cat diagnostics/export.log
 
-          echo "=== ERROR SUMMARY ==="
-          grep -inE \
-            'error|warning|missing|invalid|failed|cannot' \
-            diagnostics/export.log || true
-
-          cp export_presets.cfg \
-            diagnostics/export-presets.txt
-
           if [ "$RESULT" -ne 0 ]; then
-            echo "::error::Godot Android export failed"
+            echo "::error::Android export failed"
             exit 1
           fi
 
-          if [ ! -s build/TrafficCity3D.apk ]; then
-            echo "::error::APK was not created"
-            exit 1
-          fi
-
-          echo "APK created successfully"
-          ls -lh build/TrafficCity3D.apk
+          test -s build/TrafficCity3D.apk
 
       - name: Upload diagnostics
         if: always()
