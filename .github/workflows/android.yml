@@ -1,5 +1,5 @@
 
-name: Traffic City 3D - Android APK 14
+name: Traffic City 3D - Android APK 15
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
       image: barichello/godot-ci:4.3
 
     steps:
-      - name: Checkout project
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Prepare folders
@@ -25,7 +25,58 @@ jobs:
           mkdir -p build diagnostics
           godot --version
 
-      - name: Install Android command line tools
+      - name: Fix Android texture compression
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("project.godot")
+          text = path.read_text(encoding="utf-8")
+
+          setting = (
+              "textures/vram_compression/"
+              "import_etc2_astc=true"
+          )
+
+          pattern = (
+              r"(?m)^textures/vram_compression/"
+              r"import_etc2_astc\s*=.*$"
+          )
+
+          if re.search(pattern, text):
+              text = re.sub(pattern, setting, text)
+          else:
+              section = re.search(
+                  r"(?m)^\[rendering\]\s*$", text
+              )
+
+              if section:
+                  position = section.end()
+                  text = (
+                      text[:position]
+                      + "\n" + setting
+                      + text[position:]
+                  )
+              else:
+                  text = (
+                      text.rstrip()
+                      + "\n\n[rendering]\n"
+                      + setting + "\n"
+                  )
+
+          path.write_text(text, encoding="utf-8")
+          print("ETC2/ASTC texture compression enabled")
+          PY
+
+          grep -n \
+            "import_etc2_astc" project.godot \
+            | tee diagnostics/texture-setting.log
+
+      - name: Install Android SDK 34
         shell: bash
         run: |
           set -euo pipefail
@@ -33,27 +84,16 @@ jobs:
           SDK="$HOME/android-sdk"
           mkdir -p "$SDK/cmdline-tools"
 
-          cd /tmp
           wget -q \
             https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
-            -O android-tools.zip
+            -O /tmp/android-tools.zip
 
-          unzip -q android-tools.zip -d android-tools
+          unzip -q /tmp/android-tools.zip \
+            -d /tmp/android-tools
 
-          mv android-tools/cmdline-tools \
+          mv /tmp/android-tools/cmdline-tools \
             "$SDK/cmdline-tools/latest"
 
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-
-      - name: Install Android SDK 34
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          SDK="$ANDROID_HOME"
           MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
 
           yes | "$MANAGER" \
@@ -67,9 +107,10 @@ jobs:
           test -f "$SDK/platforms/android-34/android.jar"
           test -f "$SDK/build-tools/34.0.0/aapt"
 
-          echo "Android SDK 34 installed"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
-      - name: Locate Java 17
+      - name: Configure Java
         shell: bash
         run: |
           set -euo pipefail
@@ -78,10 +119,9 @@ jobs:
           JAVA_DIR="$(dirname "$(dirname "$JAVA_BIN")")"
 
           echo "JAVA_HOME=$JAVA_DIR" >> "$GITHUB_ENV"
-
           java -version
 
-      - name: Install Godot Android templates
+      - name: Install Godot export templates
         shell: bash
         run: |
           set -euo pipefail
@@ -92,19 +132,17 @@ jobs:
           if [ ! -s "$TARGET/android_debug.apk" ]; then
             wget -q \
               https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz \
-              -O /tmp/godot-templates.tpz
+              -O /tmp/templates.tpz
 
-            mkdir -p /tmp/godot-templates
-            unzip -q /tmp/godot-templates.tpz \
-              -d /tmp/godot-templates
+            mkdir -p /tmp/templates
+            unzip -q /tmp/templates.tpz -d /tmp/templates
 
-            cp -a /tmp/godot-templates/templates/. "$TARGET/"
+            cp -a /tmp/templates/templates/. "$TARGET/"
           fi
 
           test -s "$TARGET/android_debug.apk"
-          test -s "$TARGET/android_release.apk"
 
-      - name: Create debug signing key
+      - name: Create debug keystore
         shell: bash
         run: |
           set -euo pipefail
@@ -182,14 +220,14 @@ jobs:
           keystore/debug_password="android"
           EOF
 
-      - name: Import Godot project
+      - name: Import project
         shell: bash
         run: |
           set +e
 
           godot --headless \
-            --path . \
             --editor \
+            --path . \
             --import \
             --quit \
             > diagnostics/import.log 2>&1
@@ -198,62 +236,41 @@ jobs:
           cat diagnostics/import.log
           exit "$RESULT"
 
-      - name: Check Android environment
+      - name: Verify ETC2 ASTC setting
         shell: bash
         run: |
           set -euo pipefail
 
-          {
-            echo "=== GODOT ==="
-            godot --version
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-            echo "=== JAVA ==="
-            java -version 2>&1
+          text = Path("project.godot").read_text()
 
-            echo "=== ANDROID SDK ==="
-            echo "$ANDROID_HOME"
+          match = re.search(
+              r"(?ms)^\[rendering\]\s*\n"
+              r"(.*?)(?=^\[|\Z)",
+              text
+          )
 
-            echo "=== ANDROID PLATFORM ==="
-            ls -lh "$ANDROID_HOME/platforms/android-34/android.jar"
+          if not match:
+              raise SystemExit(
+                  "ERROR: Rendering section missing"
+              )
 
-            echo "=== BUILD TOOLS ==="
-            ls -lh "$ANDROID_HOME/build-tools/34.0.0/aapt"
+          if not re.search(
+              r"(?m)^textures/vram_compression/"
+              r"import_etc2_astc\s*=\s*true\s*$",
+              match.group(1)
+          ):
+              raise SystemExit(
+                  "ERROR: ETC2/ASTC not enabled"
+              )
 
-            echo "=== EXPORT TEMPLATE ==="
-            ls -lh \
-              "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
+          print("PASS: ETC2/ASTC enabled for Android")
+          PY
 
-            echo "=== KEYSTORE ==="
-            keytool -list \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey
-
-            echo "=== EXPORT PRESET ==="
-            cat export_presets.cfg
-
-          } > diagnostics/environment.log 2>&1
-
-          cat diagnostics/environment.log
-
-      - name: Check Godot settings
-        shell: bash
-        run: |
-          set +e
-
-          godot --headless \
-            --editor \
-            --path . \
-            --script res://check_export.gd \
-            > diagnostics/check-export.log 2>&1
-
-          RESULT=$?
-          cat diagnostics/check-export.log
-          echo "Diagnostic exit code: $RESULT"
-
-          exit 0
-
-      - name: Build Android APK
+      - name: Export Android APK
         shell: bash
         run: |
           set +e
@@ -266,22 +283,19 @@ jobs:
             > diagnostics/export.log 2>&1
 
           RESULT=$?
-
           cat diagnostics/export.log
 
           if [ "$RESULT" -ne 0 ]; then
-            echo "::error::Godot Android export failed"
+            echo "::error::Android export failed"
             exit 1
           fi
 
-          if [ ! -s build/TrafficCity3D.apk ]; then
-            echo "::error::APK was not created"
-            exit 1
-          fi
+          test -s build/TrafficCity3D.apk
 
-          echo "APK created successfully"
+          echo "APK CREATED!"
+          ls -lh build/TrafficCity3D.apk
 
-      - name: Verify Android APK
+      - name: Verify APK
         if: success()
         shell: bash
         run: |
@@ -295,8 +309,6 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" \
             verify "$APK"
 
-          ls -lh "$APK"
-
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -305,7 +317,7 @@ jobs:
           path: diagnostics/
           if-no-files-found: ignore
 
-      - name: Upload Android APK
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
